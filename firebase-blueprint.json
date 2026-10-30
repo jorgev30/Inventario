@@ -1,0 +1,232 @@
+{
+  "entities": {
+    "Product": {
+      "title": "Product",
+      "description": "Represents an inventory item or product batch with stock alerts, cost, sale price, profit, and real-time inventory days tracking.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "description": "UID of the user who owns this inventory record.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "description": "Name or description of the product.",
+          "minLength": 1,
+          "maxLength": 150
+        },
+        "sku": {
+          "type": "string",
+          "description": "Internal SKU or reference code.",
+          "minLength": 1,
+          "maxLength": 50
+        },
+        "category": {
+          "type": "string",
+          "description": "Product category.",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "imageUrl": {
+          "type": "string",
+          "description": "Product image URL, local asset path, or data URI.",
+          "minLength": 0,
+          "maxLength": 150000
+        },
+        "entryDate": {
+          "type": "string",
+          "format": "date",
+          "description": "Date the product entered inventory (YYYY-MM-DD).",
+          "minLength": 10,
+          "maxLength": 30
+        },
+        "saleDate": {
+          "type": "string",
+          "description": "Date the product or batch was sold (YYYY-MM-DD or empty string if still in inventory).",
+          "minLength": 0,
+          "maxLength": 30
+        },
+        "unitCost": {
+          "type": "number",
+          "description": "Unit purchase cost (Precio Unitario)."
+        },
+        "quantity": {
+          "type": "number",
+          "description": "Current available stock quantity (Cantidad en stock)."
+        },
+        "initialQuantity": {
+          "type": "number",
+          "description": "Total quantity acquired in this batch."
+        },
+        "soldQuantity": {
+          "type": "number",
+          "description": "Units sold from this batch."
+        },
+        "minStock": {
+          "type": "number",
+          "description": "Minimum stock threshold for automatic restock alerts."
+        },
+        "unitSalePrice": {
+          "type": "number",
+          "description": "Selling price per single unit."
+        },
+        "totalSalePrice": {
+          "type": "number",
+          "description": "Total target or realized selling price for the batch (Precio de venta)."
+        },
+        "reinvestedAmount": {
+          "type": "number",
+          "description": "Amount of capital/profit reinvested into inventory (Dinero reinvertido)."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["in_stock", "sold", "restock_ordered"],
+          "description": "Current lifecycle status of the product."
+        },
+        "notes": {
+          "type": "string",
+          "description": "Additional observations or supplier notes.",
+          "minLength": 0,
+          "maxLength": 500
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of creation."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last update."
+        }
+      },
+      "required": [
+        "ownerId",
+        "name",
+        "sku",
+        "category",
+        "imageUrl",
+        "entryDate",
+        "saleDate",
+        "unitCost",
+        "quantity",
+        "initialQuantity",
+        "soldQuantity",
+        "minStock",
+        "unitSalePrice",
+        "totalSalePrice",
+        "reinvestedAmount",
+        "status",
+        "notes",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Movement": {
+      "title": "Movement",
+      "description": "Records a stock movement, sale, restock, or capital reinvestment for monthly reporting.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "description": "UID of the user who owns this movement record.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "productId": {
+          "type": "string",
+          "description": "ID of the related Product document.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "productName": {
+          "type": "string",
+          "description": "Snapshot of the product name.",
+          "minLength": 1,
+          "maxLength": 150
+        },
+        "type": {
+          "type": "string",
+          "enum": ["sale", "restock", "reinvestment", "adjustment"],
+          "description": "Type of inventory movement."
+        },
+        "quantity": {
+          "type": "number",
+          "description": "Number of units involved in this movement."
+        },
+        "unitCost": {
+          "type": "number",
+          "description": "Unit cost at time of movement."
+        },
+        "unitSalePrice": {
+          "type": "number",
+          "description": "Unit sale price at time of movement."
+        },
+        "totalAmount": {
+          "type": "number",
+          "description": "Total monetary amount of the movement."
+        },
+        "profit": {
+          "type": "number",
+          "description": "Net profit generated by this movement."
+        },
+        "reinvestedAmount": {
+          "type": "number",
+          "description": "Capital reinvested in this transaction."
+        },
+        "date": {
+          "type": "string",
+          "format": "date",
+          "description": "Date of movement (YYYY-MM-DD).",
+          "minLength": 10,
+          "maxLength": 30
+        },
+        "notes": {
+          "type": "string",
+          "description": "Notes or description of the movement.",
+          "minLength": 0,
+          "maxLength": 300
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of creation."
+        }
+      },
+      "required": [
+        "ownerId",
+        "productId",
+        "productName",
+        "type",
+        "quantity",
+        "unitCost",
+        "unitSalePrice",
+        "totalAmount",
+        "profit",
+        "reinvestedAmount",
+        "date",
+        "notes",
+        "createdAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/products/{productId}": {
+      "schema": {
+        "$ref": "#/entities/Product"
+      },
+      "description": "Stores inventory products, stock thresholds, pricing, profit calculations, and dates per user."
+    },
+    "/movements/{movementId}": {
+      "schema": {
+        "$ref": "#/entities/Movement"
+      },
+      "description": "Stores historical sales, restocks, and reinvestment movements for monthly reporting."
+    }
+  }
+}

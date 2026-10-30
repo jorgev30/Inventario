@@ -1,0 +1,188 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Safety Net: Default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 2. Primitive Helpers
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isAdmin() {
+      return isVerified() && (
+        request.auth.token.email == 'jorgevillero7@gmail.com' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isNumber(val) {
+      return val is int || val is float;
+    }
+
+    // 3. Entity Validation Blueprints
+    function isValidProduct(data) {
+      return data.keys().hasAll([
+        'ownerId', 'name', 'sku', 'category', 'imageUrl',
+        'entryDate', 'saleDate', 'unitCost', 'quantity',
+        'initialQuantity', 'soldQuantity', 'minStock',
+        'unitSalePrice', 'totalSalePrice', 'reinvestedAmount',
+        'status', 'notes', 'createdAt', 'updatedAt'
+      ]) && data.keys().hasOnly([
+        'ownerId', 'name', 'sku', 'category', 'imageUrl',
+        'entryDate', 'saleDate', 'unitCost', 'quantity',
+        'initialQuantity', 'soldQuantity', 'minStock',
+        'unitSalePrice', 'totalSalePrice', 'reinvestedAmount',
+        'status', 'notes', 'createdAt', 'updatedAt'
+      ]) &&
+      isValidId(data.ownerId) &&
+      data.ownerId == request.auth.uid &&
+      data.name is string && data.name.size() >= 1 && data.name.size() <= 150 &&
+      data.sku is string && data.sku.size() >= 1 && data.sku.size() <= 50 &&
+      data.category is string && data.category.size() >= 1 && data.category.size() <= 80 &&
+      data.imageUrl is string && data.imageUrl.size() <= 150000 &&
+      data.entryDate is string && data.entryDate.size() >= 10 && data.entryDate.size() <= 30 &&
+      data.saleDate is string && data.saleDate.size() <= 30 &&
+      isNumber(data.unitCost) && data.unitCost >= 0 &&
+      isNumber(data.quantity) && data.quantity >= 0 &&
+      isNumber(data.initialQuantity) && data.initialQuantity >= 1 &&
+      isNumber(data.soldQuantity) && data.soldQuantity >= 0 &&
+      isNumber(data.minStock) && data.minStock >= 0 &&
+      isNumber(data.unitSalePrice) && data.unitSalePrice >= 0 &&
+      isNumber(data.totalSalePrice) && data.totalSalePrice >= 0 &&
+      isNumber(data.reinvestedAmount) && data.reinvestedAmount >= 0 &&
+      data.status is string && data.status.size() <= 20 &&
+      data.status in ['in_stock', 'sold', 'restock_ordered'] &&
+      data.notes is string && data.notes.size() <= 500 &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidMovement(data) {
+      return data.keys().hasAll([
+        'ownerId', 'productId', 'productName', 'type',
+        'quantity', 'unitCost', 'unitSalePrice', 'totalAmount',
+        'profit', 'reinvestedAmount', 'date', 'notes', 'createdAt'
+      ]) && data.keys().hasOnly([
+        'ownerId', 'productId', 'productName', 'type',
+        'quantity', 'unitCost', 'unitSalePrice', 'totalAmount',
+        'profit', 'reinvestedAmount', 'date', 'notes', 'createdAt'
+      ]) &&
+      isValidId(data.ownerId) &&
+      data.ownerId == request.auth.uid &&
+      isValidId(data.productId) &&
+      data.productName is string && data.productName.size() >= 1 && data.productName.size() <= 150 &&
+      data.type is string && data.type.size() <= 20 &&
+      data.type in ['sale', 'restock', 'reinvestment', 'adjustment'] &&
+      isNumber(data.quantity) && data.quantity >= 0 &&
+      isNumber(data.unitCost) && data.unitCost >= 0 &&
+      isNumber(data.unitSalePrice) && data.unitSalePrice >= 0 &&
+      isNumber(data.totalAmount) && data.totalAmount >= 0 &&
+      isNumber(data.profit) &&
+      isNumber(data.reinvestedAmount) && data.reinvestedAmount >= 0 &&
+      data.date is string && data.date.size() >= 10 && data.date.size() <= 30 &&
+      data.notes is string && data.notes.size() <= 300 &&
+      data.createdAt is timestamp;
+    }
+
+    // 4. Collection Rules: /admins/{adminId}
+    match /admins/{adminId} {
+      allow get: if isSignedIn() && isValidId(adminId) && (request.auth.uid == adminId || isAdmin());
+      allow list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    // 5. Collection Rules: /products/{productId}
+    match /products/{productId} {
+      allow get: if isSignedIn() && isValidId(productId) && (existing().ownerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+
+      allow create: if isVerified() &&
+        isValidId(productId) &&
+        isValidProduct(incoming()) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+
+      allow update: if isVerified() &&
+        isValidId(productId) &&
+        isValidProduct(incoming()) &&
+        incoming().ownerId == existing().ownerId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          isAdmin() ||
+          // Action 1: Record Sale or Reinvestment Update
+          (
+            existing().ownerId == request.auth.uid &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'quantity', 'initialQuantity', 'soldQuantity', 'saleDate',
+              'unitSalePrice', 'totalSalePrice', 'reinvestedAmount',
+              'status', 'notes', 'updatedAt'
+            ])
+          ) ||
+          // Action 2: Restock or Full Product Details Edit
+          (
+            existing().ownerId == request.auth.uid &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'name', 'sku', 'category', 'imageUrl', 'entryDate', 'saleDate',
+              'unitCost', 'quantity', 'initialQuantity', 'soldQuantity',
+              'minStock', 'unitSalePrice', 'totalSalePrice', 'reinvestedAmount',
+              'status', 'notes', 'updatedAt'
+            ])
+          )
+        );
+
+      allow delete: if isVerified() &&
+        isValidId(productId) &&
+        (existing().ownerId == request.auth.uid || isAdmin());
+    }
+
+    // 6. Collection Rules: /movements/{movementId}
+    match /movements/{movementId} {
+      allow get: if isSignedIn() && isValidId(movementId) && (existing().ownerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+
+      allow create: if isVerified() &&
+        isValidId(movementId) &&
+        isValidMovement(incoming()) &&
+        incoming().createdAt == request.time &&
+        exists(/databases/$(database)/documents/products/$(incoming().productId)) &&
+        get(/databases/$(database)/documents/products/$(incoming().productId)).data.ownerId == request.auth.uid;
+
+      allow update: if isVerified() &&
+        isValidId(movementId) &&
+        isValidMovement(incoming()) &&
+        incoming().ownerId == existing().ownerId &&
+        incoming().productId == existing().productId &&
+        incoming().createdAt == existing().createdAt && (
+          isAdmin() ||
+          (
+            existing().ownerId == request.auth.uid &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['notes', 'reinvestedAmount'])
+          )
+        );
+
+      allow delete: if isVerified() &&
+        isValidId(movementId) &&
+        (existing().ownerId == request.auth.uid || isAdmin());
+    }
+  }
+}
